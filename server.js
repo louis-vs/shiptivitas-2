@@ -127,6 +127,13 @@ app.put('/api/v1/clients/:id', (req, res) => {
 
   // Update status
   if(status) {
+    // Status can only be either 'backlog' | 'in-progress' | 'complete'
+    if (status !== 'backlog' && status !== 'in-progress' && status !== 'complete') {
+      return res.status(400).send({
+        'message': 'Invalid status provided.',
+        'long_message': 'Status can only be one of the following: [backlog | in-progress | complete].',
+      });
+    }
     if(status !== client.status) {
       // Update priorities of new status in preparation
       db.prepare('UPDATE clients SET priority = priority + 1 WHERE status = ? AND priority >= ?').run(status, client.priority);
