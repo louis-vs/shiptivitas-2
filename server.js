@@ -105,7 +105,7 @@ app.get('/api/v1/clients/:id', (req, res) => {
  * When status is provided, the client status will be changed
  * When priority is provided, the client priority will be changed with the rest of the clients accordingly
  * Note that priority = 1 means it has the highest priority (should be on top of the swimlane).
- * No client on the same status should not have the same priority.
+ * No client on the same status should have the same priority.
  * This API should return list of clients on success
  *
  * PUT /api/v1/clients/{client_id} - change the status of a client
@@ -125,9 +125,46 @@ app.put('/api/v1/clients/:id', (req, res) => {
   let clients = db.prepare('select * from clients').all();
   const client = clients.find(client => client.id === id);
 
-  /* ---------- Update code below ----------*/
+  // Update status
+  if(status) {
+    if(status !== client.status) {
+      // Update priorities of new status in preparation
+      db.prepare('UPDATE clients SET priority = priority + 1 WHERE status = ? AND priority >= ?').run(status, client.priority);
+      
+      // Update status
+      db.prepare('UPDATE clients SET status = ? WHERE id = ?').run(status, id);
 
+      // Update leftover priorities in source status
+      db.prepare('UPDATE clients SET priority = priority - 1 WHERE status = ? AND priority > ?').run(client.status, client.priority);
+    }
+  } else {
+    // Status needs to have a value for priority to update
+    status = client.status;
+  }
 
+  // Update priority
+  if(priority && priority !== client.priority) {
+    // Priority shouldn't be less than 1
+    if(priority < 1) {
+      priority = 1;
+    }
+    // Priority shouldn't be higher than size of table
+    const count = db.prepare('SELECT COUNT(*) FROM clients WHERE status = ?').get(status)['COUNT(*)'];
+    if(priority > count) {
+      priority = count;
+    }
+    // Shift other clients' values
+    if(priority > client.priority) {
+      db.prepare('UPDATE clients SET priority = priority - 1 WHERE status = ? AND priority > ? AND priority <= ?').run(status, client.priority, priority);
+    } else if(priority < client.priority) {
+      db.prepare('UPDATE clients SET priority = priority + 1 WHERE status = ? AND priority >= ? AND priority < ?').run(status, priority, client.priority);
+    }
+    // Update requested client
+    db.prepare('UPDATE clients SET priority = ? WHERE id = ?').run(priority, id);
+  }
+
+  // Return updated data
+  clients = db.prepare('SELECT * FROM clients WHERE status = ?').all(status);
 
   return res.status(200).send(clients);
 });
